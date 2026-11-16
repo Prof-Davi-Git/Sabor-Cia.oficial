@@ -1,0 +1,32 @@
+[
+  {
+    "id": 1,
+    "nome": "Ana Silva",
+    "email": "ana@saborcia.exemplo",
+    "senha": "sabor123"
+  },
+  {
+    "id": 2,
+    "nome": "Carlos Souza",
+    "email": "carlos@saborcia.exemplo",
+    "senha": "sabor123"
+  },
+  {
+    "id": 3,
+    "nome": "Beatriz Lima",
+    "email": "beatriz@saborcia.exemplo",
+    "senha": "sabor123"
+  },
+  {
+    "id": 4,
+    "nome": "Daniel Alves",
+    "email": "daniel@saborcia.exemplo",
+    "senha": "sabor123"
+  },
+  {
+    "id": 5,
+    "nome": "Fernanda Costa",
+    "email": "fernanda@saborcia.exemplo",
+    "senha": "sabor123"
+  }
+]
