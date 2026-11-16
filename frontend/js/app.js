@@ -53,6 +53,22 @@ function readStore(key,fallback=[]){try{const value=JSON.parse(localStorage.getI
 function writeStore(key,value){localStorage.setItem(key,JSON.stringify(value));return value}
 function apiError(message,status=400,code='LOCAL_ERROR'){const e=new Error(message);e.status=status;e.code=code;throw e}
 async function localPassword(value){const raw=String(value||'');try{if(globalThis.crypto?.subtle){const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(raw));return [...new Uint8Array(buf)].map(x=>x.toString(16).padStart(2,'0')).join('')}}catch{}return 'local-'+encodeURIComponent(raw)}
+// ATUALIZAÇÃO 16/11 - USUÁRIOS DE EXEMPLO DO BANCO SQL/JSON
+// O JSON é público e serve SOMENTE para demonstração em sala de aula.
+// Não usar senhas reais neste arquivo, nem tratar esse login como seguro.
+// A leitura é feita pelo navegador; o banco MySQL NÃO está conectado ao site.
+async function carregarUsuariosExemplo(){
+  const caminho=location.pathname.includes('/pages/')?'../dados/usuarios.json':'dados/usuarios.json';
+  try{
+    const resposta=await fetch(caminho,{cache:'no-store'});
+    if(!resposta.ok)throw new Error('Arquivo JSON não encontrado');
+    const dados=await resposta.json();
+    return Array.isArray(dados)?dados.filter(u=>u&&typeof u.email==='string'&&typeof u.nome==='string'):[];
+  }catch(erro){
+    console.warn('ATUALIZAÇÃO 16/11: não foi possível carregar os usuários de exemplo.',erro);
+    return [];
+  }
+}
 function currentAccountKey(){return norm(authUser()?.email||'visitante')||'visitante'}
 function allFavorites(){const all=readStore(LOCAL_FAVORITES_KEY,{});return (all&&typeof all==='object')?all:{}}
 function currentFavorites(){return allFavorites()[currentAccountKey()]||[]}
@@ -160,7 +176,9 @@ async function api(path,options={}){
     const name=String(body.name||'').trim(),email=String(body.email||'').trim().toLowerCase(),password=String(body.password||'');
     if(!name||!email||!password) apiError('Preencha nome, e-mail e senha.',400,'INVALID_DATA');
     const users=readStore(LOCAL_USERS_KEY,[]);
-    if(users.some(u=>u.email===email)) apiError('Já existe uma conta com este e-mail. Entre na sua conta.',409,'EMAIL_EXISTS');
+    // ATUALIZAÇÃO 16/11 - impede repetir o e-mail dos usuários fictícios do JSON.
+    const exemplos=await carregarUsuariosExemplo();
+    if(users.some(u=>u.email===email)||exemplos.some(u=>u.email.trim().toLowerCase()===email)) apiError('Já existe uma conta com este e-mail. Entre na sua conta.',409,'EMAIL_EXISTS');
     const user={id:'u-'+Date.now(),name,email,emailConsent:!!body.emailConsent,createdAt:new Date().toISOString()};
     users.push({...user,passwordHash:await localPassword(password)});writeStore(LOCAL_USERS_KEY,users);
     return {token:'local-'+Date.now(),user};
@@ -168,9 +186,19 @@ async function api(path,options={}){
   if(path==='/auth/login'&&method==='POST'){
     const email=String(body.email||'').trim().toLowerCase(),password=String(body.password||'');
     const users=readStore(LOCAL_USERS_KEY,[]),found=users.find(u=>u.email===email);
-    if(!found) apiError('Não encontramos uma conta com este e-mail. Cadastre-se primeiro.',404,'ACCOUNT_NOT_FOUND');
-    if(found.passwordHash!==await localPassword(password)) apiError('Senha incorreta.',401,'INVALID_CREDENTIALS');
-    const {passwordHash,...user}=found;return {token:'local-'+Date.now(),user};
+    // ATUALIZAÇÃO 16/11 - primeiro preserva as contas criadas normalmente no navegador.
+    if(found){
+      if(found.passwordHash!==await localPassword(password)) apiError('Senha incorreta.',401,'INVALID_CREDENTIALS');
+      const {passwordHash,...user}=found;
+      return {token:'local-'+Date.now(),user};
+    }
+    // Depois verifica os cinco usuários de demonstração no arquivo JSON.
+    const exemplos=await carregarUsuariosExemplo();
+    const exemplo=exemplos.find(u=>u.email.trim().toLowerCase()===email);
+    if(!exemplo) apiError('Não encontramos uma conta com este e-mail. Cadastre-se primeiro.',404,'ACCOUNT_NOT_FOUND');
+    if(exemplo.senha!==password) apiError('Senha incorreta.',401,'INVALID_CREDENTIALS');
+    const user={id:'demo-'+exemplo.id,name:exemplo.nome,email:exemplo.email,emailConsent:false};
+    return {token:'demo-'+Date.now(),user};
   }
   if(path==='/auth/me'){
     const user=authUser();if(!user)apiError('Você precisa entrar na sua conta.',401,'UNAUTHORIZED');return {user};
@@ -219,7 +247,8 @@ async function api(path,options={}){
   }
   apiError('Este recurso ainda não está disponível no modo local.',404,'NOT_IMPLEMENTED');
 }
-function goLogin(message){if(message)sessionStorage.setItem('sabor-login-message',message);sessionStorage.setItem('sabor-after-login',location.href);const hasUsers=readStore(LOCAL_USERS_KEY,[]).length>0;const target=hasUsers?'login.html':'cadastro.html';location.href=location.pathname.includes('/pages/')?target:'pages/'+target;}
+function goLogin(message){if(message)sessionStorage.setItem('sabor-login-message',message);sessionStorage.setItem('sabor-after-login',location.href);// ATUALIZAÇÃO 16/11 - com contas JSON disponíveis, sempre abrir a tela de login.
+  const target='login.html';location.href=location.pathname.includes('/pages/')?target:'pages/'+target;}
 function requireAuth(){if(!authUser()){goLogin('Para continuar, crie sua conta ou entre na conta já cadastrada.');return false}return true;}
 
 function setupTheme(){const saved=localStorage.getItem('sabor-theme')||'light';document.body.classList.toggle('dark',saved==='dark');$$('[data-theme]').forEach(b=>b.addEventListener('click',()=>{const dark=document.body.classList.toggle('dark');localStorage.setItem('sabor-theme',dark?'dark':'light');toast(dark?'Modo escuro ativado.':'Modo claro ativado.')}))}
@@ -640,7 +669,8 @@ function setupLanguage(){
 
 async function refreshLoggedUser(){return authUser();}
 function pageName(){const p=location.pathname.split('/').filter(Boolean).pop();return p||'index.html'}
-function authGateTarget(){return readStore(LOCAL_USERS_KEY,[]).length?'login.html':'cadastro.html'}
+// ATUALIZAÇÃO 16/11 - o login também aceita usuários de demonstração do JSON.
+function authGateTarget(){return 'login.html'}
 async function setupAuth(){
   const page=pageName();
   const existingUser=authUser();
